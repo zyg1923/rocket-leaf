@@ -1,0 +1,24 @@
+{
+  "name": "rocket-leaf",
+  "version": "0.1.3",
+  "private": true,
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "wails3 task dev",
+    "generate:bindings": "wails3 generate bindings -clean=true -ts",
+    "build": "wails3 task build",
+    "package": "wails3 task package",
+    "check:version": "node scripts/check-version.mjs",
+    "go:fmt:check": "bash -c 'files=$(gofmt -l . ); [ -z \"$files\" ] || { echo \"The following Go files are not gofmt-clean:\"; echo \"$files\"; echo \"Run: gofmt -w .\"; exit 1; }'",
+    "go:vet": "go vet ./...",
+    "frontend:type-check": "npm --prefix frontend run type-check",
+    "build:frontend": "npm --prefix frontend run build",
+    "test": "npm run test:go && npm run test:frontend",
+    "test:go": "go test ./...",
+    "test:frontend": "npm --prefix frontend test",
+    "e2e:up": "docker compose -f tests/e2e/rocketmq/compose.yaml up -d --wait",
+    "e2e:down": "docker compose -f tests/e2e/rocketmq/compose.yaml down -v",
+    "check:bindings": "npm run generate:bindings && git diff --quiet -- frontend/bindings || (echo 'Generated bindings are stale; run npm run generate:bindings and commit the result.' >&2 && git diff --stat -- frontend/bindings && exit 1)",
+    "check": "npm run check:version && npm run build:frontend && npm run go:fmt:check && npm run go:vet && npm test && npm run check:bindings"
+  }
+}

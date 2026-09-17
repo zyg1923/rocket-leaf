@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.3"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.3",
+			"CompanyName": "amigoer",
+			"FileDescription": "Local-first desktop client for RocketMQ",
+			"LegalCopyright": "(c) 2026, amigoer",
+			"ProductName": "Rocket Leaf",
+			"Comments": "Local-first desktop client for RocketMQ"
+		}
+	}
+}

@@ -1,0 +1,32 @@
+name: rocket-leaf-e2e
+
+services:
+  namesrv:
+    image: apache/rocketmq:5.3.2
+    command: sh mqnamesrv
+    ports:
+      - '127.0.0.1:9876:9876'
+    restart: unless-stopped
+
+  broker:
+    image: apache/rocketmq:5.3.2
+    # Official image runs as non-root, but named volumes created by OrbStack are root-owned by default.
+    # This container is for local isolated tests only; run as root so the broker can initialize store dirs.
+    user: root
+    command: sh mqbroker -n namesrv:9876 -c /etc/rocketmq/broker.conf
+    depends_on:
+      - namesrv
+    ports:
+      - '127.0.0.1:10909:10909'
+      - '127.0.0.1:10911:10911'
+    environment:
+      JAVA_OPT_EXT: >-
+        -server -Xms512m -Xmx512m -Xmn256m
+        -XX:+UseG1GC -XX:MaxGCPauseMillis=50
+    volumes:
+      - ./broker.conf:/etc/rocketmq/broker.conf:ro
+      - broker-store:/home/rocketmq/store
+    restart: unless-stopped
+
+volumes:
+  broker-store:
