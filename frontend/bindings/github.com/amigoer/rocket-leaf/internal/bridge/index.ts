@@ -27,6 +27,7 @@ export {
     ConnectionInput,
     ConnectionView,
     ConsumerInput,
+    DeleteInput,
     MessageQuery,
     ResendInput,
     SendInput,

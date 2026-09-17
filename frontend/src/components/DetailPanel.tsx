@@ -18,7 +18,7 @@ export function DetailPanel({
   ariaLabel,
   /** `scroll`: the whole panel scrolls. `column`: caller manages its own scroll region. */
   layout = 'scroll',
-  className,
+    className,
   children,
 }: {
   exiting: boolean
@@ -31,7 +31,7 @@ export function DetailPanel({
     <aside
       aria-label={ariaLabel}
       className={cn(
-        'scroll-thin detail-panel shrink-0 border-l border-border bg-background',
+        'scroll-thin detail-panel h-full min-h-0 shrink-0 border-l border-border bg-background',
         layout === 'scroll' ? 'overflow-auto' : 'flex min-h-0 flex-col overflow-hidden',
         exiting && 'exiting',
         className,

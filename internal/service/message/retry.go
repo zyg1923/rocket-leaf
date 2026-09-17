@@ -11,12 +11,12 @@ import (
 )
 
 // QueryDLQMessages returns dead-letter messages for a consumer group.
-func (s *Service) QueryDLQMessages(groupName string, maxResults int) ([]*model.MessageItem, error) {
+func (s *Service) QueryDLQMessages(groupName string, maxResults int, key, tag string, startTime, endTime int64) ([]*model.MessageItem, error) {
 	groupName = strings.TrimSpace(groupName)
 	if groupName == "" {
 		return nil, fmt.Errorf("查询死信消息失败: 消费者组不能为空")
 	}
-	messages, err := s.QueryMessages("%DLQ%"+groupName, "", "", maxResults, 0, 0)
+	messages, err := s.QueryMessages("%DLQ%"+groupName, key, tag, maxResults, startTime, endTime)
 	if err != nil && errors.Is(err, admin.ErrTopicNotFound) {
 		return []*model.MessageItem{}, nil
 	}
@@ -24,12 +24,12 @@ func (s *Service) QueryDLQMessages(groupName string, maxResults int) ([]*model.M
 }
 
 // QueryRetryMessages returns retry messages for a consumer group.
-func (s *Service) QueryRetryMessages(groupName string, maxResults int) ([]*model.MessageItem, error) {
+func (s *Service) QueryRetryMessages(groupName string, maxResults int, key, tag string, startTime, endTime int64) ([]*model.MessageItem, error) {
 	groupName = strings.TrimSpace(groupName)
 	if groupName == "" {
 		return nil, fmt.Errorf("查询重试消息失败: 消费者组不能为空")
 	}
-	messages, err := s.QueryMessages("%RETRY%"+groupName, "", "", maxResults, 0, 0)
+	messages, err := s.QueryMessages("%RETRY%"+groupName, key, tag, maxResults, startTime, endTime)
 	if err != nil && errors.Is(err, admin.ErrTopicNotFound) {
 		return []*model.MessageItem{}, nil
 	}

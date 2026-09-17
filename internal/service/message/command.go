@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/amigoer/rocket-leaf/internal/rocketmq"
+	"github.com/amigoer/rocket-leaf/internal/service/internal/mqexec"
 
+	admin "github.com/amigoer/rocketmq-admin-go"
 	rocketmqClient "github.com/apache/rocketmq-client-go/v2"
 	"github.com/apache/rocketmq-client-go/v2/primitive"
 	"github.com/apache/rocketmq-client-go/v2/producer"
@@ -35,6 +38,89 @@ func (s *Service) ResendMessage(consumerGroup, clientID, topic, messageID string
 		return "", fmt.Errorf("无法从内部 Topic %s 解析原业务 Topic", targetTopic)
 	}
 	return s.SendMessage(targetTopic, item.Tags, item.Keys, item.Body, 0)
+}
+
+// consumerGroupFromInternalTopic extracts the group from %RETRY% / %DLQ% topics.
+func consumerGroupFromInternalTopic(topic string) string {
+	topic = strings.TrimSpace(topic)
+	for _, prefix := range []string{"%DLQ%", "%RETRY%", "DLQ%", "RETRY%"} {
+		if strings.HasPrefix(topic, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(topic, prefix))
+		}
+	}
+	return ""
+}
+
+func (s *Service) deleteTimeout() time.Duration {
+	timeout := 30 * time.Second
+	if s.settings != nil {
+		if configured := s.settings.GetRequestTimeout(); configured > timeout {
+			timeout = configured
+		}
+	}
+	return timeout
+}
+
+// DeleteMessage asks an online consumer to consume the message directly.
+// RocketMQ cannot erase a CommitLog record; this is the dashboard skip path.
+func (s *Service) DeleteMessage(topic, messageID, consumerGroup, storeHost string) error {
+	topic = strings.TrimSpace(topic)
+	messageID = strings.TrimSpace(messageID)
+	if topic == "" || messageID == "" {
+		return fmt.Errorf("删除消息失败: Topic 和 Message ID 不能为空")
+	}
+
+	group := strings.TrimSpace(consumerGroup)
+	if group == "" {
+		group = consumerGroupFromInternalTopic(topic)
+	}
+	timeout := s.deleteTimeout()
+	addrs := uniqueAddrs([]string{storeHost, addrFromOffsetMsgID(messageID)})
+	addrs = dropUnreachableBrokerAddrs(addrs)
+
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	if group != "" && len(addrs) > 0 {
+		clientID, clientErr := pickOnlineClientIDOnAddrs(ctx, timeout, addrs, group)
+		if clientErr == nil {
+			message := &admin.MessageExt{Topic: topic, OffsetMsgId: messageID, StoreHost: storeHost}
+			if err := consumeOnAddrs(ctx, timeout, addrs, group, clientID, topic, message, messageID); err == nil {
+				return nil
+			}
+		}
+	}
+
+	client, err := rocketmq.GetClientManager().GetDefaultClient()
+	if err != nil {
+		return fmt.Errorf("删除消息失败: %w", err)
+	}
+	err = mqexec.WithTimeout(client, timeout, func(callCtx context.Context, retryClient *admin.Client) error {
+		if group == "" {
+			var groupErr error
+			group, groupErr = pickConsumerGroup(callCtx, retryClient, topic, consumerGroup)
+			if groupErr != nil {
+				return groupErr
+			}
+		}
+		if len(addrs) == 0 {
+			addrs = brokerAddrsForMessage(callCtx, retryClient, &admin.MessageExt{Topic: topic, StoreHost: storeHost})
+			addrs = dropUnreachableBrokerAddrs(addrs)
+		}
+		clientID, clientErr := pickOnlineClientIDOnAddrs(callCtx, timeout, addrs, group)
+		if clientErr != nil {
+			clientID, clientErr = pickOnlineClientID(callCtx, retryClient, group)
+			if clientErr != nil {
+				return clientErr
+			}
+		}
+		message := &admin.MessageExt{Topic: topic, OffsetMsgId: messageID, StoreHost: storeHost}
+		return consumeMessageDirectly(callCtx, retryClient, timeout, group, clientID, topic, message, messageID)
+	})
+	if err != nil {
+		return fmt.Errorf("删除消息失败: %w", err)
+	}
+	return nil
 }
 
 // SendMessage sends a message to a topic. Delay levels range from zero through eighteen.

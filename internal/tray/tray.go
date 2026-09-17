@@ -68,15 +68,10 @@ type Controller struct {
 	language string
 }
 
-// New installs the tray icon. Either mouse button opens the menu, whose first
-// entry restores the window; the menu is also the only guaranteed way to quit
-// on Windows and Linux, where the app has no menu bar of its own.
-//
-// No click handler is registered on purpose. Wails only routes a tray click
-// into native menu tracking when both the click handler and the attached
-// window are unset (systrayPreClickCallback in systemtray_darwin.go); setting
-// one falls back to a deprecated code path where the left button does nothing
-// on current macOS.
+// New installs the tray icon. A left click restores the main window; the menu
+// (right click, or the overflow on some desktops) still offers navigation and
+// is the guaranteed way to quit on Windows and Linux, where the app has no
+// menu bar of its own.
 func New(
 	app *application.App,
 	window *application.WebviewWindow,
@@ -92,6 +87,7 @@ func New(
 	}
 	controller.tray.SetIcon(icon)
 	controller.tray.SetTooltip(tooltip)
+	controller.tray.OnClick(func() { controller.showWindow() })
 	controller.buildMenu()
 	controller.SetLanguage(language)
 	return controller
@@ -157,6 +153,7 @@ func (c *Controller) showWindow() {
 	if c.window == nil {
 		return
 	}
+	c.window.UnMinimise()
 	c.window.Show()
 	c.window.Focus()
 }

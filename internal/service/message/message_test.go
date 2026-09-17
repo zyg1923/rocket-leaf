@@ -109,6 +109,34 @@ func TestConvertMessageExtFallsBackToOffsetMessageID(t *testing.T) {
 	}
 }
 
+func TestConsumerGroupFromInternalTopic(t *testing.T) {
+	tests := []struct {
+		topic string
+		want  string
+	}{
+		{topic: "%DLQ%orders-group", want: "orders-group"},
+		{topic: "%RETRY%orders-group", want: "orders-group"},
+		{topic: "orders", want: ""},
+	}
+	for _, test := range tests {
+		if got := consumerGroupFromInternalTopic(test.topic); got != test.want {
+			t.Fatalf("topic %q: got %q want %q", test.topic, got, test.want)
+		}
+	}
+}
+
+func TestDeleteMessageValidation(t *testing.T) {
+	service := New(nil)
+	err := service.DeleteMessage("", "id", "", "")
+	if err == nil || err.Error() != "删除消息失败: Topic 和 Message ID 不能为空" {
+		t.Fatalf("empty topic error = %v", err)
+	}
+	err = service.DeleteMessage("orders", "id", "", "")
+	if err == nil {
+		t.Fatal("normal topic without a connected client must not report success")
+	}
+}
+
 func TestMessageMatchesID(t *testing.T) {
 	message := &admin.MessageExt{
 		MsgId:       "client-id",
@@ -167,5 +195,22 @@ func TestConvertMessageExtStatuses(t *testing.T) {
 	})
 	if normal.Status != model.MsgNormal || normal.Tags != "t" || normal.Keys != "k" {
 		t.Fatalf("normal conversion failed: %#v", normal)
+	}
+}
+
+func TestConsumeMessageIDsPrefersOffsetID(t *testing.T) {
+	ids := consumeMessageIDs(&admin.MessageExt{OffsetMsgId: "offset", MsgId: "client"}, "ui")
+	if len(ids) != 3 || ids[0] != "offset" || ids[1] != "client" || ids[2] != "ui" {
+		t.Fatalf("ids = %#v", ids)
+	}
+}
+
+func TestAddrFromOffsetMsgID(t *testing.T) {
+	got := addrFromOffsetMsgID("0A5DE93A00002A9F000000000042E322")
+	if got != "10.93.233.58:10911" {
+		t.Fatalf("got %q", got)
+	}
+	if got := addrFromOffsetMsgID("7F00000100002A9F0000000000000001"); got != "" {
+		t.Fatalf("loopback offset id should be ignored, got %q", got)
 	}
 }

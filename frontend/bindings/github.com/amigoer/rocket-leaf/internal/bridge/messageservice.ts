@@ -37,6 +37,15 @@ export function DLQ(group: string, maxResults: number): $CancellablePromise<(mod
 }
 
 /**
+ * Delete asks an online consumer to consume the message directly.
+ * RocketMQ cannot erase a single record from CommitLog; this is the skip path
+ * used for retry and dead-letter queues.
+ */
+export function Delete(input: $models.DeleteInput): $CancellablePromise<void> {
+    return $Call.ByID(3486445407, input);
+}
+
+/**
  * Query searches a topic by key, tag and time range.
  */
 export function Query(query: $models.MessageQuery): $CancellablePromise<(model$0.MessageItem | null)[]> {

@@ -2,6 +2,7 @@ package message
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -93,6 +94,9 @@ func (s *Service) QueryMessages(topic, key, tag string, maxResults int, startTim
 		return nil
 	})
 	if err != nil {
+		if consumerGroupFromInternalTopic(query.topic) != "" && errors.Is(err, admin.ErrTopicNotFound) {
+			return []*model.MessageItem{}, nil
+		}
 		return nil, fmt.Errorf("查询消息失败: %w", err)
 	}
 	return result, nil

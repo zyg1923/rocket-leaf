@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Copy, X, Send, GitBranch, Check } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent } from 'react'
+import { Search, Copy, X, Send, GitBranch, Check, Trash2, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import * as Popover from '@radix-ui/react-popover'
 import { Spinner } from '@/components/Spinner'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
@@ -16,8 +17,8 @@ import { useRecentPicks } from '@/hooks/useRecentPicks'
 import { useSettings } from '@/hooks/useSettings'
 import { useDelayedUnmount } from '@/hooks/useDelayedUnmount'
 import * as messageApi from '@/api/message'
-import { formatErrorMessage } from '@/lib/utils'
-import { activatableRowProps, ROW_FOCUS_CLASS } from '@/lib/a11y'
+import { cn, formatErrorMessage } from '@/lib/utils'
+import { ROW_FOCUS_CLASS } from '@/lib/a11y'
 import {
   detectBodyKind,
   formatMessageTime,
@@ -34,12 +35,33 @@ import type { NavId } from '@/layout/Sidebar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Combobox } from '@/components/ui/combobox'
+import { DatePicker } from '@/components/ui/date-picker'
+import { Checkbox } from '@/components/ui/checkbox'
+import { ContextMenu } from '@/components/ui/context-menu'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Modal } from '@/components/ui/modal'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
 type TabKey = 'topic' | 'msgid' | 'retry' | 'dlq'
+
+/** Broker query hard cap in internal/service/message/query.go. */
+const QUERY_CAP = 1000
+
+function pageButtons(current: number, total: number): Array<number | 'gap'> {
+  if (total <= 0) return []
+  if (total <= 9) return Array.from({ length: total }, (_, i) => i + 1)
+  const picked = new Set([1, total, current - 2, current - 1, current, current + 1, current + 2])
+  const nums = [...picked].filter((n) => n >= 1 && n <= total).sort((a, b) => a - b)
+  const out: Array<number | 'gap'> = []
+  for (const n of nums) {
+    const prev = out[out.length - 1]
+    if (typeof prev === 'number' && n - prev > 1) out.push('gap')
+    out.push(n)
+  }
+  return out
+}
 
 function tryFormatJSON(s: string): string {
   try {
@@ -74,9 +96,34 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
   const [error, setError] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
   const searchRequestRef = useRef(0)
+  const skippedIdsRef = useRef(new Set<string>())
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [anchorId, setAnchorId] = useState<string | null>(null)
   const [resendTarget, setResendTarget] = useState<MessageItem | null>(null)
+  const [deleteTargets, setDeleteTargets] = useState<MessageItem[] | null>(null)
+  const [batchBusy, setBatchBusy] = useState(false)
+  const [page, setPage] = useState(1)
+  const [jumpDraft, setJumpDraft] = useState('1')
+  const [capped, setCapped] = useState(false)
+  const batchSelectable = true
+  const pagingEnabled = tab === 'topic' || tab === 'retry' || tab === 'dlq'
+  const pageSize = Math.min(500, Math.max(1, limit))
+  const totalPages = Math.max(1, Math.ceil(results.length / pageSize))
+  const pageRows = useMemo(() => {
+    if (!pagingEnabled) return results
+    const start = (page - 1) * pageSize
+    return results.slice(start, start + pageSize)
+  }, [pagingEnabled, page, pageSize, results])
+
+  useEffect(() => {
+    if (results.length === 0) return
+    if (page > totalPages) {
+      setPage(totalPages)
+      setJumpDraft(String(totalPages))
+    }
+  }, [page, results.length, totalPages])
 
   const sendableTopics = useMemo(
     () =>
@@ -98,6 +145,41 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
 
   const dismissPanel = useCallback(() => setSelectedId(null), [])
 
+  const openDetail = useCallback((id: string) => {
+    setSelectedId(id)
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      next.add(id)
+      return next
+    })
+    setAnchorId(id)
+  }, [])
+
+  const toggleChecked = useCallback((id: string, shift: boolean, ctrl: boolean) => {
+    const ids = pageRows.map((m) => m.messageId)
+    if (shift && anchorId) {
+      const a = ids.indexOf(anchorId)
+      const b = ids.indexOf(id)
+      if (a >= 0 && b >= 0) {
+        const [lo, hi] = a < b ? [a, b] : [b, a]
+        setCheckedIds(new Set(ids.slice(lo, hi + 1)))
+        return
+      }
+    }
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      if (ctrl) {
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+        return next
+      }
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    setAnchorId(id)
+  }, [anchorId, pageRows])
+
   const panelMount = useDelayedUnmount(!!selected)
   // Pin the displayed item so it stays alive during the exit animation.
   const [pinnedSelected, setPinnedSelected] = useState<MessageItem | null>(null)
@@ -117,13 +199,38 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
   }, [selectedId, dismissPanel])
 
   // Clicking the result pane outside any row closes the panel
-  const handleListBackgroundClick = (e: React.MouseEvent) => {
+  const handleListBackgroundClick = (e: MouseEvent) => {
     if (!selectedId) return
     if ((e.target as HTMLElement).closest('tr')) return
     dismissPanel()
   }
 
-  const handleSearch = async () => {
+  const queryRange = () => {
+    const beginMs = beginAt ? new Date(beginAt).getTime() : 0
+    const userEndMs = endAt ? new Date(endAt).getTime() : 0
+    if (
+      (beginAt && Number.isNaN(beginMs)) ||
+      (endAt && Number.isNaN(userEndMs)) ||
+      (beginMs > 0 && userEndMs > 0 && beginMs > userEndMs)
+    ) {
+      throw new Error(t('messages.form.validateTimeRange'))
+    }
+    const condition = {
+      messageKey: keyFilter,
+      messageTag: tagFilter,
+      startTimeMs: beginMs,
+      endTimeMs: userEndMs,
+    }
+    if (tab === 'topic') {
+      return messageApi.queryMessagesByCondition(topic, condition, QUERY_CAP)
+    }
+    if (tab === 'retry') {
+      return messageApi.queryMessagesByCondition(`%RETRY%${group}`, condition, QUERY_CAP)
+    }
+    return messageApi.queryMessagesByCondition(`%DLQ%${group}`, condition, QUERY_CAP)
+  }
+
+  const runQuery = async () => {
     const requestId = ++searchRequestRef.current
     setError(null)
     setHasSearched(true)
@@ -136,65 +243,56 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
         setError(t('messages.form.validateMsgId'))
         return
       }
-    } else {
-      if (!group) {
-        setError(t('messages.form.validateGroup'))
-        return
-      }
+    } else if (!group) {
+      setError(t('messages.form.validateGroup'))
+      return
     }
     setSearching(true)
-    setResults([])
     try {
       let next: MessageItem[] = []
-      if (tab === 'topic') {
-        const beginMs = beginAt ? new Date(beginAt).getTime() : 0
-        const endMs = endAt ? new Date(endAt).getTime() : 0
-        if (
-          (beginAt && Number.isNaN(beginMs)) ||
-          (endAt && Number.isNaN(endMs)) ||
-          (beginMs > 0 && endMs > 0 && beginMs > endMs)
-        ) {
-          setError(t('messages.form.validateTimeRange'))
-          return
-        }
-        next = await messageApi.queryMessagesByCondition(
-          topic,
-          {
-            messageKey: keyFilter,
-            messageTag: tagFilter,
-            startTimeMs: beginMs,
-            endTimeMs: endMs,
-          },
-          limit,
-        )
-      } else if (tab === 'msgid') {
+      if (tab === 'msgid') {
         next = await messageApi.queryMessagesByCondition(topic, { messageId: msgId.trim() })
-      } else if (tab === 'retry') {
-        next = await messageApi.queryRetryMessages(group, limit)
-      } else if (tab === 'dlq') {
-        next = await messageApi.queryDLQMessages(group, limit)
+      } else {
+        next = await queryRange()
       }
       if (requestId !== searchRequestRef.current) return
-      // Having queried is what makes a topic or group "recently used"; an empty
-      // result was still worth looking at. Stale responses return above, so a
-      // query the user moved on from never records anything.
       if (tab === 'topic' || tab === 'msgid') recordTopic(topic)
       else recordGroup(group)
-      setResults(next)
-      // Keep the detail panel closed after a new query — the user
-      // opens it explicitly by clicking a row.
+      setResults(next.filter((m) => !skippedIdsRef.current.has(m.messageId)))
+      setPage(1)
+      setJumpDraft('1')
+      setCapped(pagingEnabled && next.length >= QUERY_CAP)
       setSelectedId(null)
+      setCheckedIds(new Set())
+      setAnchorId(null)
       if (next.length === 0) {
         toast.info(t('messages.empty'))
       }
     } catch (e) {
       if (requestId !== searchRequestRef.current) return
-      const msg = formatErrorMessage(e)
+      const msg = e instanceof Error && e.message === t('messages.form.validateTimeRange')
+        ? e.message
+        : formatErrorMessage(e)
       setError(msg)
-      toast.error(t('messages.queryError', { message: msg }))
+      if (msg !== t('messages.form.validateTimeRange')) {
+        toast.error(t('messages.queryError', { message: msg }))
+      }
     } finally {
       if (requestId === searchRequestRef.current) setSearching(false)
     }
+  }
+
+  const goToPage = (next: number) => {
+    const pages = Math.max(1, Math.ceil(results.length / pageSize))
+    const clamped = Math.min(pages, Math.max(1, Math.trunc(next) || 1))
+    setPage(clamped)
+    setJumpDraft(String(clamped))
+    setCheckedIds(new Set())
+    setAnchorId(null)
+  }
+
+  const handleSearch = () => {
+    void runQuery()
   }
 
   const handleCopy = async (text: string) => {
@@ -203,6 +301,103 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
       toast.success(t('messages.detail.copySuccess'))
     } catch {
       toast.error(t('messages.detail.copyError'))
+    }
+  }
+
+  const allChecked = pageRows.length > 0 && pageRows.every((m) => checkedIds.has(m.messageId))
+  const someChecked = pageRows.some((m) => checkedIds.has(m.messageId))
+
+  const handleClearResults = () => {
+    setResults([])
+    setHasSearched(false)
+    setSelectedId(null)
+    setCheckedIds(new Set())
+    setAnchorId(null)
+    setPage(1)
+    setJumpDraft('1')
+    setCapped(false)
+  }
+
+  const removeFromResults = (ids: string[]) => {
+    const drop = new Set(ids)
+    setResults((prev) => prev.filter((m) => !drop.has(m.messageId)))
+    setCheckedIds((prev) => {
+      const next = new Set(prev)
+      for (const id of ids) next.delete(id)
+      return next
+    })
+    if (selectedId && drop.has(selectedId)) setSelectedId(null)
+  }
+
+  const deleteGroupFor = (msg: MessageItem) => {
+    if (msg.topic.startsWith('%DLQ%')) return msg.topic.slice(5)
+    if (msg.topic.startsWith('%RETRY%')) return msg.topic.slice(7)
+    return group.trim()
+  }
+
+  const handleConfirmDelete = async () => {
+    const targets = deleteTargets
+    if (!targets || targets.length === 0) return
+    setBatchBusy(true)
+    let ok = 0
+    let fail = 0
+    let lastError = ''
+    const removed: string[] = []
+    for (const msg of targets) {
+      try {
+        await messageApi.deleteMessage(msg.topic, msg.messageId, deleteGroupFor(msg), msg.storeHost)
+        ok += 1
+        removed.push(msg.messageId)
+        skippedIdsRef.current.add(msg.messageId)
+      } catch (e) {
+        fail += 1
+        lastError = formatErrorMessage(e)
+      }
+    }
+    removeFromResults(removed)
+    setBatchBusy(false)
+    setDeleteTargets(null)
+    if (fail === 0) {
+      toast.success(
+        targets.length === 1
+          ? t('messages.detail.deleteSuccess')
+          : t('messages.batchDeleteSuccess', { count: ok }),
+      )
+    } else {
+      toast.error(t('messages.batchDeletePartial', { ok, fail }), {
+        description: lastError || undefined,
+      })
+    }
+  }
+
+  const handleBatchResend = async () => {
+    const targets = results.filter((m) => checkedIds.has(m.messageId))
+    if (targets.length === 0) return
+    setBatchBusy(true)
+    let ok = 0
+    let fail = 0
+    for (const msg of targets) {
+      try {
+        await messageApi.resendMessage('', '', msg.topic, msg.messageId)
+        ok += 1
+      } catch {
+        fail += 1
+      }
+    }
+    setBatchBusy(false)
+    if (fail === 0) toast.success(t('messages.batchResendSuccess', { count: ok }))
+    else toast.error(t('messages.batchResendPartial', { ok, fail }))
+  }
+
+  const handleRowKeyDown = (event: ReactKeyboardEvent<HTMLElement>, id: string) => {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      openDetail(id)
+      return
+    }
+    if (event.key === ' ') {
+      event.preventDefault()
+      toggleChecked(id, event.shiftKey, event.ctrlKey || event.metaKey)
     }
   }
 
@@ -223,6 +418,12 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
               setResults([])
               setError(null)
               setHasSearched(false)
+              setSelectedId(null)
+              setCheckedIds(new Set())
+              setAnchorId(null)
+              setPage(1)
+              setJumpDraft('1')
+              setCapped(false)
             }}
             items={[
               { key: 'topic', label: t('messages.tabs.topic') },
@@ -252,6 +453,8 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
                 onChange={setTopic}
                 options={sendableTopics}
                 recent={recentTopics}
+                searchable={false}
+                clearable={false}
                 emptyLabel={t('messages.form.topicPlaceholder')}
                 searchPlaceholder={t('messages.form.topicSearchPlaceholder')}
                 recentLabel={t('common.recentUsed')}
@@ -269,6 +472,8 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
                 onChange={setGroup}
                 options={sortedGroups}
                 recent={recentGroups}
+                searchable={false}
+                clearable={false}
                 emptyLabel={t('messages.form.groupPlaceholder')}
                 searchPlaceholder={t('messages.form.groupSearchPlaceholder')}
                 recentLabel={t('common.recentUsed')}
@@ -279,24 +484,22 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
               />
             )}
 
-            {tab === 'topic' && (
+            {(tab === 'topic' || tab === 'retry' || tab === 'dlq') && (
               <>
-                <Input
+                <DatePicker
                   className="font-mono-design"
-                  type="datetime-local"
                   placeholder={t('messages.form.begin')}
                   style={{ width: '15.38rem' }}
                   value={beginAt}
-                  onChange={(e) => setBeginAt(e.target.value)}
+                  onChange={setBeginAt}
                   title={t('messages.form.begin')}
                 />
-                <Input
+                <DatePicker
                   className="font-mono-design"
-                  type="datetime-local"
                   placeholder={t('messages.form.end')}
                   style={{ width: '15.38rem' }}
                   value={endAt}
-                  onChange={(e) => setEndAt(e.target.value)}
+                  onChange={setEndAt}
                   title={t('messages.form.end')}
                 />
                 <Input
@@ -340,16 +543,160 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
               {searching ? <Spinner size={13} /> : <Search size={13} />}
               {searching ? t('messages.form.searching') : t('messages.form.search')}
             </Button>
-            {hasSearched && !searching && results.length > 0 && (
-              <div className="text-muted-foreground ml-auto text-fs-12">
-                {t('messages.summary', { count: results.length })}
-              </div>
-            )}
           </div>
+
+          {hasSearched && !searching && (
+            <div className="mx-5 mt-2 flex shrink-0 flex-wrap items-center gap-2">
+              {results.length > 0 && (
+                <div className="text-muted-foreground text-fs-12">
+                  {pagingEnabled
+                    ? t('messages.pageTotal', { count: results.length, pages: totalPages })
+                    : t('messages.summary', { count: results.length })}
+                  {capped ? ` · ${t('messages.pageCapped', { cap: QUERY_CAP })}` : ''}
+                  {checkedIds.size > 0 ? ` · ${t('messages.selected', { count: checkedIds.size })}` : ''}
+                </div>
+              )}
+              {checkedIds.size > 0 && (
+                <Button variant="outline" size="sm" onClick={handleBatchResend} disabled={batchBusy}>
+                  {batchBusy ? <Spinner size={13} /> : <Send size={13} />}
+                  {t('messages.batchResend')}
+                </Button>
+              )}
+              {checkedIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive"
+                  onClick={() =>
+                    setDeleteTargets(results.filter((m) => checkedIds.has(m.messageId)))
+                  }
+                  disabled={batchBusy}
+                >
+                  <Trash2 size={13} />
+                  {t('messages.batchDelete')}
+                </Button>
+              )}
+              {pagingEnabled && results.length > 0 && (
+                <div className="ml-auto flex flex-wrap items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={t('messages.pageFirst')}
+                    onClick={() => goToPage(1)}
+                    disabled={page <= 1}
+                  >
+                    <ChevronsLeft size={13} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={t('messages.pagePrev')}
+                    onClick={() => goToPage(page - 1)}
+                    disabled={page <= 1}
+                  >
+                    <ChevronLeft size={13} />
+                    {t('messages.pagePrev')}
+                  </Button>
+                  <span className="text-muted-foreground px-1 text-fs-12 tabular-nums">
+                    {t('messages.pageInfo', { page, pages: totalPages })}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={t('messages.pageNext')}
+                    onClick={() => goToPage(page + 1)}
+                    disabled={page >= totalPages}
+                  >
+                    {t('messages.pageNext')}
+                    <ChevronRight size={13} />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    title={t('messages.pageLast')}
+                    onClick={() => goToPage(totalPages)}
+                    disabled={page >= totalPages}
+                  >
+                    <ChevronsRight size={13} />
+                  </Button>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={totalPages}
+                    aria-label={t('messages.pageJumpTo')}
+                    style={{ width: '4.2rem' }}
+                    value={jumpDraft}
+                    onChange={(e) => setJumpDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') goToPage(Number(jumpDraft))
+                    }}
+                  />
+                  <Button variant="outline" size="sm" onClick={() => goToPage(Number(jumpDraft))}>
+                    {t('messages.pageJump')}
+                  </Button>
+                  <Popover.Root>
+                    <Popover.Trigger asChild>
+                      <Button variant="outline" size="sm">{t('messages.pageQuick')}</Button>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                      <Popover.Content
+                        align="end"
+                        sideOffset={6}
+                        className="z-50 w-[16.5rem] rounded-lg border border-border bg-popover p-3 text-popover-foreground shadow-[0_12px_40px_hsl(0_0%_0%/0.12)]"
+                      >
+                        <div className="text-muted-foreground mb-2 text-fs-12">
+                          {t('messages.pageTotal', { count: results.length, pages: totalPages })}
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {pageButtons(page, totalPages).map((item, i) =>
+                            item === 'gap' ? (
+                              <span key={`gap-${i}`} className="text-muted-foreground px-1 py-1 text-fs-12">
+                                …
+                              </span>
+                            ) : (
+                              <Button
+                                key={item}
+                                type="button"
+                                size="sm"
+                                variant={item === page ? 'default' : 'outline'}
+                                className="h-7 min-w-7 px-2"
+                                onClick={() => goToPage(item)}
+                              >
+                                {item}
+                              </Button>
+                            ),
+                          )}
+                        </div>
+                        <div className="mt-2 flex items-center gap-1">
+                          <Input
+                            type="number"
+                            min={1}
+                            max={totalPages}
+                            style={{ width: '5rem' }}
+                            value={jumpDraft}
+                            onChange={(e) => setJumpDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') goToPage(Number(jumpDraft))
+                            }}
+                          />
+                          <Button size="sm" onClick={() => goToPage(Number(jumpDraft))}>
+                            {t('messages.pageJump')}
+                          </Button>
+                        </div>
+                      </Popover.Content>
+                    </Popover.Portal>
+                  </Popover.Root>
+                </div>
+              )}
+              <Button variant="ghost" size="sm" onClick={handleClearResults}>
+                {t('messages.clearResults')}
+              </Button>
+            </div>
+          )}
 
           {error && <ErrorBanner message={error} />}
 
-          <div className="flex min-h-0 flex-1 overflow-hidden">
+          <div className="relative flex min-h-0 flex-1 overflow-hidden">
             <PageBody onClick={handleListBackgroundClick}>
               {searching && results.length === 0 ? (
                 <div
@@ -371,74 +718,127 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
                 <Card className="overflow-hidden">
                 <Table>
                   <TableHeader>
-                    <TableRow>
-                      <TableHead style={{ width: '15.38rem' }}>{t('messages.table.msgId')}</TableHead>
+                    <TableRow className="select-none">
+                      {batchSelectable && (
+                        <TableHead style={{ width: '2.4rem' }}>
+                          <Checkbox
+                            aria-label={t('messages.selected', { count: checkedIds.size })}
+                            checked={allChecked}
+                            indeterminate={!allChecked && someChecked}
+                            onCheckedChange={(next) => {
+                              if (next) setCheckedIds(new Set(pageRows.map((m) => m.messageId)))
+                              else setCheckedIds(new Set())
+                            }}
+                          />
+                        </TableHead>
+                      )}
                       <TableHead style={{ width: '8.46rem' }}>{t('messages.table.tag')}</TableHead>
                       <TableHead style={{ width: '13.85rem' }}>{t('messages.table.key')}</TableHead>
                       <TableHead>{t('messages.table.preview')}</TableHead>
                       <TableHead style={{ width: '5.38rem', textAlign: 'right' }}>{t('messages.table.queue')}</TableHead>
                       <TableHead style={{ width: '13.08rem' }}>{t('messages.table.storeTime')}</TableHead>
+                      <TableHead style={{ width: '15.38rem' }}>{t('messages.table.msgId')}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {results.map((m) => (
-                      <TableRow
-                        key={m.messageId}
-                        // A real <tr> keeps its row role; only the keyboard
-                        // behaviour is borrowed from a button. The row used to
-                        // carry a bare `selected` class that no stylesheet ever
-                        // matched, so selection was invisible here.
-                        data-state={selectedId === m.messageId ? 'selected' : undefined}
-                        aria-selected={selectedId === m.messageId}
-                        className={ROW_FOCUS_CLASS}
-                        onClick={() => setSelectedId(m.messageId)}
-                        {...activatableRowProps(() => setSelectedId(m.messageId))}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <TableCell>
-                          <div
-                            className="font-mono-design truncate text-fs-12"
-                            style={{ maxWidth: '13.85rem' }}
-                            title={m.messageId}
-                          >
-                            {m.messageId.slice(0, 24)}…
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {m.tags ? (
-                            <Badge variant="outline">{m.tags}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground text-fs-12">—</span>
+                    {pageRows.map((m) => {
+                      const checked = checkedIds.has(m.messageId)
+                      const isDetail = selectedId === m.messageId
+                      const row = (
+                        <TableRow
+                          key={m.messageId}
+                          data-state={checked || isDetail ? 'selected' : undefined}
+                          aria-selected={checked || isDetail}
+                          className={cn(ROW_FOCUS_CLASS, 'select-none')}
+                          tabIndex={0}
+                          onClick={(e) => {
+                            if ((e.target as HTMLElement).closest('[role="checkbox"]')) return
+                            toggleChecked(m.messageId, e.shiftKey, e.ctrlKey || e.metaKey)
+                          }}
+                          onDoubleClick={() => openDetail(m.messageId)}
+                          onContextMenu={(e) => {
+                            e.preventDefault()
+                            openDetail(m.messageId)
+                          }}
+                          onKeyDown={(e) => handleRowKeyDown(e, m.messageId)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          {batchSelectable && (
+                            <TableCell>
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() =>
+                                  toggleChecked(m.messageId, false, true)
+                                }
+                              />
+                            </TableCell>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono-design text-fs-12">{m.keys || '—'}</span>
-                        </TableCell>
-                        <TableCell>
-                          <div
-                            className="font-mono-design text-muted-foreground text-fs-12"
-                            style={{
-                              maxWidth: '21.54rem',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {m.body}
-                          </div>
-                        </TableCell>
-                        <TableCell style={{ textAlign: 'right' }} className="tabular-nums text-muted-foreground">
-                          {m.queueId}
-                        </TableCell>
-                        <TableCell className="font-mono-design text-muted-foreground text-fs-12">
-                          {formatMessageTime(
-                            m.storeTimestamp || m.storeTime,
-                            settings.timezone,
-                            settings.timestampFormat,
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                          <TableCell>
+                            {m.tags ? (
+                              <Badge variant="outline">{m.tags}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground text-fs-12">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono-design text-fs-12">{m.keys || '—'}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div
+                              className="font-mono-design text-muted-foreground text-fs-12"
+                              style={{
+                                maxWidth: '21.54rem',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {m.body}
+                            </div>
+                          </TableCell>
+                          <TableCell style={{ textAlign: 'right' }} className="tabular-nums text-muted-foreground">
+                            {m.queueId}
+                          </TableCell>
+                          <TableCell className="font-mono-design text-muted-foreground text-fs-12">
+                            {formatMessageTime(
+                              m.storeTimestamp || m.storeTime,
+                              settings.timezone,
+                              settings.timestampFormat,
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div
+                              className="font-mono-design truncate text-fs-12"
+                              style={{ maxWidth: '13.85rem' }}
+                              title={m.messageId}
+                            >
+                              {m.messageId.slice(0, 24)}…
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )
+                      return (
+                        <ContextMenu
+                          key={m.messageId}
+                          items={[
+                            { label: t('messages.openDetail'), onSelect: () => openDetail(m.messageId) },
+                            {
+                              label: t('messages.detail.actions.resend'),
+                              onSelect: () => {
+                                openDetail(m.messageId)
+                                setResendTarget(m)
+                              },
+                            },
+                            {
+                              label: t('messages.detail.actions.delete'),
+                              onSelect: () => setDeleteTargets([m]),
+                            },
+                          ]}
+                        >
+                          {row}
+                        </ContextMenu>
+                      )
+                    })}
                   </TableBody>
                 </Table>
                 </Card>
@@ -446,19 +846,40 @@ export function MessagesPage({ onNavigate }: { onNavigate?: (id: NavId) => void 
             </PageBody>
 
             {panelMount.shouldRender && renderedSelected && (
-              <MessageDetailPanel
-                msg={renderedSelected}
-                exiting={panelMount.exiting}
-                onClose={dismissPanel}
-                onCopy={handleCopy}
-                onResend={() => setResendTarget(renderedSelected)}
-              />
+              <div className="absolute inset-y-0 right-0 z-10 h-full min-h-0 overflow-hidden shadow-[-12px_0_28px_hsl(0_0%_0%/0.12)]">
+                <MessageDetailPanel
+                  msg={renderedSelected}
+                  exiting={panelMount.exiting}
+                  onClose={dismissPanel}
+                  onCopy={handleCopy}
+                  onResend={() => setResendTarget(renderedSelected)}
+                  onDelete={() => setDeleteTargets([renderedSelected])}
+                />
+              </div>
             )}
           </div>
         </>
       )}
 
       {resendTarget && <ResendDialog msg={resendTarget} onClose={() => setResendTarget(null)} />}
+      <ConfirmDialog
+        open={deleteTargets != null}
+        title={
+          (deleteTargets?.length ?? 0) > 1
+            ? t('messages.batchDelete')
+            : t('messages.detail.deleteTitle')
+        }
+        description={
+          (deleteTargets?.length ?? 0) > 1
+            ? t('messages.batchDeleteConfirm', { count: deleteTargets?.length ?? 0 })
+            : t('messages.detail.deleteConfirm')
+        }
+        confirmText={batchBusy ? t('common.loading') : t('common.delete')}
+        cancelText={t('common.cancel')}
+        variant="destructive"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => !batchBusy && setDeleteTargets(null)}
+      />
     </div>
   )
 }
@@ -471,12 +892,14 @@ function MessageDetailPanel({
   onClose,
   onCopy,
   onResend,
+  onDelete,
 }: {
   msg: MessageItem
   exiting: boolean
   onClose: () => void
   onCopy: (s: string) => void
   onResend: () => void
+  onDelete: () => void
 }) {
   const { t } = useTranslation()
   const { settings } = useSettings()
@@ -543,38 +966,38 @@ function MessageDetailPanel({
   return (
     <DetailPanel
       exiting={exiting}
+      layout="column"
       ariaLabel={t('messages.detail.title')}
     >
-      <div style={{ padding: 20 }}>
-        <div className="flex items-center justify-between gap-2">
-          <div className="truncate font-semibold">{t('messages.detail.title')}</div>
-          <div className="flex shrink-0 gap-1">
-            <Button variant="ghost" size="icon-sm"
-              onClick={() => onCopy(msg.messageId)}
-              title={t('messages.detail.actions.copyId')}
-            >
-              <Copy size={13} />
-            </Button>
-            <Button variant="ghost" size="icon-sm" onClick={onClose}>
-              <X size={14} />
-            </Button>
-          </div>
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-5 py-4">
+        <div className="truncate font-semibold">{t('messages.detail.title')}</div>
+        <div className="flex shrink-0 gap-1">
+          <Button variant="ghost" size="icon-sm"
+            onClick={() => onCopy(msg.messageId)}
+            title={t('messages.detail.actions.copyId')}
+          >
+            <Copy size={13} />
+          </Button>
+          <Button variant="ghost" size="icon-sm" onClick={onClose}>
+            <X size={14} />
+          </Button>
         </div>
+      </div>
 
-        <UnderlineTabs
-          bleed
-          className="mt-3"
-          value={tab}
-          onChange={setTab}
-          items={(['body', 'properties', 'track'] as const).map((k) => ({
-            key: k,
-            label: t(`messages.detail.tabs.${k}`),
-          }))}
-        />
+      <UnderlineTabs
+        bleed
+        className="shrink-0 px-5"
+        value={tab}
+        onChange={setTab}
+        items={(['body', 'properties', 'track'] as const).map((k) => ({
+          key: k,
+          label: t(`messages.detail.tabs.${k}`),
+        }))}
+      />
 
-        <SectionLabel>{t('messages.detail.info')}</SectionLabel>
+      <div className="scroll-thin min-h-0 flex-1 overflow-auto px-5 py-4">
+        <SectionLabel first>{t('messages.detail.info')}</SectionLabel>
         <div>
-          <InfoRow label={t('messages.detail.msgId')} mono valueClassName="break-all">{msg.messageId}</InfoRow>
           <InfoRow label={t('messages.detail.topic')} mono>{msg.topic}</InfoRow>
           {msg.tags && (
             <InfoRow label={t('messages.detail.tag')}>{msg.tags}</InfoRow>
@@ -597,6 +1020,7 @@ function MessageDetailPanel({
           {msg.retryTimes > 0 && (
             <InfoRow label={t('messages.detail.retryTimes')} valueClassName="tabular-nums">{msg.retryTimes}</InfoRow>
           )}
+          <InfoRow label={t('messages.detail.msgId')} mono valueClassName="break-all">{msg.messageId}</InfoRow>
         </div>
 
         {tab === 'body' && (
@@ -726,7 +1150,7 @@ function MessageDetailPanel({
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap gap-2">
+        <div className="mt-6 flex flex-wrap gap-2 pb-2">
           <Button variant="outline" size="sm" onClick={onResend}>
             <Send size={13} />
             {t('messages.detail.actions.resend')}
@@ -734,6 +1158,10 @@ function MessageDetailPanel({
           <Button variant="outline" size="sm" onClick={() => setTab('track')}>
             <GitBranch size={13} />
             {t('messages.detail.actions.track')}
+          </Button>
+          <Button variant="outline" size="sm" className="text-destructive" onClick={onDelete}>
+            <Trash2 size={13} />
+            {t('messages.detail.actions.delete')}
           </Button>
         </div>
       </div>

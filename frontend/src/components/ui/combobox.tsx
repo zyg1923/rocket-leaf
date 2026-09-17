@@ -1,6 +1,6 @@
 import * as React from 'react'
 import * as Popover from '@radix-ui/react-popover'
-import { Check, ChevronDown, Plus } from 'lucide-react'
+import { Check, ChevronDown, Plus, X } from 'lucide-react'
 import { filterOptions } from '@/lib/optionFilter'
 import { cn } from '@/lib/utils'
 
@@ -32,6 +32,10 @@ export interface ComboboxProps {
   /** Builds the footer telling how many matches were left out of the rendered list. */
   moreHint?: (count: number) => string
   maxLength?: number
+  /** Show the in-dropdown search field. Defaults to true. */
+  searchable?: boolean
+  /** Show a clear control on the trigger when a value is set. Defaults to true. */
+  clearable?: boolean
   disabled?: boolean
   className?: string
   style?: React.CSSProperties
@@ -60,6 +64,8 @@ export function Combobox({
   emptyMessage,
   moreHint,
   maxLength,
+  searchable = true,
+  clearable = true,
   disabled,
   className,
   style,
@@ -139,6 +145,25 @@ export function Combobox({
           <span className={cn('min-w-0 flex-1 truncate text-left', !value && 'text-muted-foreground')}>
             {value || emptyLabel}
           </span>
+          {clearable && value && (
+            <span
+              role="button"
+              tabIndex={-1}
+              aria-label="Clear"
+              className="inline-flex shrink-0 items-center justify-center rounded-sm opacity-50 hover:opacity-100"
+              onPointerDown={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onChange('')
+              }}
+            >
+              <X size={12} aria-hidden />
+            </span>
+          )}
           <ChevronDown
             size={14}
             aria-hidden
@@ -159,29 +184,31 @@ export function Combobox({
             maxWidth: 'max(var(--radix-popover-trigger-width), 18rem)',
           }}
         >
-          <input
-            autoFocus
-            value={query}
-            maxLength={maxLength}
-            spellCheck={false}
-            autoComplete="off"
-            placeholder={searchPlaceholder}
-            className="mb-1 h-7 w-full rounded-md border-0 bg-transparent px-2 text-fs-125 text-foreground outline-none placeholder:text-muted-foreground"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                // Commit what was typed: an exact existing name selects it, a
-                // new one creates it. An empty box just closes the dropdown.
-                if (trimmed === '') setOpenState(false)
-                else if (createLabel) commit(trimmed)
-                else if (entries[0]) commit(entries[0].value)
-              } else if (e.key === 'ArrowDown') {
-                e.preventDefault()
-                focusItem(0)
-              }
-            }}
-          />
+          {searchable && (
+            <input
+              autoFocus
+              value={query}
+              maxLength={maxLength}
+              spellCheck={false}
+              autoComplete="off"
+              placeholder={searchPlaceholder}
+              className="mb-1 h-7 w-full rounded-md border-0 bg-transparent px-2 text-fs-125 text-foreground outline-none placeholder:text-muted-foreground"
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  // Commit what was typed: an exact existing name selects it, a
+                  // new one creates it. An empty box just closes the dropdown.
+                  if (trimmed === '') setOpenState(false)
+                  else if (createLabel) commit(trimmed)
+                  else if (entries[0]) commit(entries[0].value)
+                } else if (e.key === 'ArrowDown') {
+                  e.preventDefault()
+                  focusItem(0)
+                }
+              }}
+            />
+          )}
           <div
             role="listbox"
             className="scroll-thin overflow-y-auto"

@@ -55,3 +55,10 @@ export const sendMessage = (
   body: string,
   delayLevel = 0,
 ): Promise<string> => MessageService.Send({ topic, tags, keys, body, delayLevel })
+
+export const deleteMessage = (
+  topic: string,
+  messageId: string,
+  consumerGroup = '',
+  storeHost = '',
+): Promise<void> => MessageService.Delete({ topic, messageId, consumerGroup, storeHost })

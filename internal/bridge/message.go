@@ -37,6 +37,14 @@ type SendInput struct {
 	DelayLevel int    `json:"delayLevel"`
 }
 
+// DeleteInput identifies a message to skip via ConsumeMessageDirectly.
+type DeleteInput struct {
+	Topic         string `json:"topic"`
+	MessageID     string `json:"messageId"`
+	ConsumerGroup string `json:"consumerGroup"`
+	StoreHost     string `json:"storeHost"`
+}
+
 // defaultMaxResults mirrors the page size the message views request.
 const defaultMaxResults = 32
 
@@ -65,12 +73,12 @@ func (s *MessageService) Track(topic string, messageID string) ([]*model.Message
 
 // DLQ returns the dead letter messages of a consumer group.
 func (s *MessageService) DLQ(group string, maxResults int) ([]*model.MessageItem, error) {
-	return s.service.QueryDLQMessages(group, maxResultsOrDefault(maxResults))
+	return s.service.QueryDLQMessages(group, maxResultsOrDefault(maxResults), "", "", 0, 0)
 }
 
 // Retry returns the retry messages of a consumer group.
 func (s *MessageService) Retry(group string, maxResults int) ([]*model.MessageItem, error) {
-	return s.service.QueryRetryMessages(group, maxResultsOrDefault(maxResults))
+	return s.service.QueryRetryMessages(group, maxResultsOrDefault(maxResults), "", "", 0, 0)
 }
 
 // Resend pushes a message back to a consumer client and returns the new ID.
@@ -81,4 +89,11 @@ func (s *MessageService) Resend(input ResendInput) (string, error) {
 // Send produces a message and returns its ID.
 func (s *MessageService) Send(input SendInput) (string, error) {
 	return s.service.SendMessage(input.Topic, input.Tags, input.Keys, input.Body, input.DelayLevel)
+}
+
+// Delete asks an online consumer to consume the message directly.
+// RocketMQ cannot erase a single record from CommitLog; this is the skip path
+// used for retry and dead-letter queues.
+func (s *MessageService) Delete(input DeleteInput) error {
+	return s.service.DeleteMessage(input.Topic, input.MessageID, input.ConsumerGroup, input.StoreHost)
 }

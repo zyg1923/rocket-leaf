@@ -242,6 +242,42 @@ export class ConsumerInput {
 }
 
 /**
+ * DeleteInput identifies a message to skip via ConsumeMessageDirectly.
+ */
+export class DeleteInput {
+    "topic": string;
+    "messageId": string;
+    "consumerGroup": string;
+    "storeHost": string;
+
+    /** Creates a new DeleteInput instance. */
+    constructor($$source: Partial<DeleteInput> = {}) {
+        if (!("topic" in $$source)) {
+            this["topic"] = "";
+        }
+        if (!("messageId" in $$source)) {
+            this["messageId"] = "";
+        }
+        if (!("consumerGroup" in $$source)) {
+            this["consumerGroup"] = "";
+        }
+        if (!("storeHost" in $$source)) {
+            this["storeHost"] = "";
+        }
+
+        Object.assign(this, $$source);
+    }
+
+    /**
+     * Creates a new DeleteInput instance from a string or object.
+     */
+    static createFrom($$source: any = {}): DeleteInput {
+        let $$parsedSource = typeof $$source === 'string' ? JSON.parse($$source) : $$source;
+        return new DeleteInput($$parsedSource as Partial<DeleteInput>);
+    }
+}
+
+/**
  * MessageQuery carries the message search form.
  */
 export class MessageQuery {
