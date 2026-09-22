@@ -10,8 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/amigoer/rocket-leaf/releases/latest"><img src="https://img.shields.io/github/v/release/amigoer/rocket-leaf?style=flat-square&label=release" alt="最新版本"></a>
-  <a href="https://github.com/amigoer/rocket-leaf/releases"><img src="https://img.shields.io/github/downloads/amigoer/rocket-leaf/total?style=flat-square&label=downloads" alt="下载量"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 许可证"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-39404A?style=flat-square" alt="支持平台">
   <img src="https://img.shields.io/badge/RocketMQ-4.x%20%7C%205.x-FF6A00?style=flat-square" alt="RocketMQ 4.x 与 5.x">
@@ -19,7 +17,7 @@
 
 <p align="center">
   <a href="README.md">English</a> ·
-  <a href="https://github.com/amigoer/rocket-leaf/releases">下载</a> ·
+  <a href="打包与部署.md">打包</a> ·
   <a href="docs/ARCHITECTURE.md">文档</a>
 </p>
 
@@ -80,17 +78,15 @@
   </tr>
 </table>
 
-## 下载
+## 仓库
 
-前往 **[GitHub Releases](https://github.com/amigoer/rocket-leaf/releases)** 下载最新版本：
+https://github.com/zyg1923/rocket-leaf
 
-安装包统一命名为 `rocket-leaf-<版本>-<系统>-<架构>.<后缀>`，系统取值 `mac`、`windows`、`linux`，架构取值 `amd64`、`arm64`。
+```powershell
+git clone https://github.com/zyg1923/rocket-leaf.git
+```
 
-| 平台 | 安装包 |
-| --- | --- |
-| macOS Apple Silicon / Intel | `rocket-leaf-<版本>-mac-arm64.dmg` / `-mac-amd64.dmg` |
-| Windows ARM64 / x64 | `rocket-leaf-<版本>-windows-arm64.exe` / `-windows-amd64.exe` |
-| Linux ARM64 / x64 | `rocket-leaf-<版本>-linux-arm64.AppImage` / `-linux-amd64.AppImage` |
+本仓库只提交源码，安装包不在 Git 里。Windows 上如何打包、克隆后缺哪些文件，见 [打包与部署.md](打包与部署.md)。
 
 ## 快速开始
 
@@ -99,8 +95,6 @@
 3. 保存并连接，然后从侧边栏选择需要的功能。
 
 连接与设置保存在本机用户配置目录中。导出的配置包含明文凭证，请作为敏感文件妥善保管。
-
-本仓库不提交 `node_modules`、前端构建结果和安装包。Windows 上如何打包、缺了哪些文件，见 [打包与部署.md](打包与部署.md)。
 
 ## 开发
 
@@ -120,4 +114,4 @@ make dev
 
 ## 许可证
 
-[Apache-2.0](LICENSE) © 2026 [amigoer](https://github.com/amigoer)
+[Apache-2.0](LICENSE)

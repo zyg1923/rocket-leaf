@@ -21,7 +21,7 @@ import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
 import { openExternal } from '@/api/platform'
 
-const GITHUB_URL = 'https://github.com/amigoer/rocket-leaf'
+const GITHUB_URL = 'https://github.com/zyg1923/rocket-leaf'
 
 export type NavId =
   | 'home'

@@ -28,8 +28,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 
-const GITHUB_URL = 'https://github.com/amigoer/rocket-leaf'
-const DOCS_URL = 'https://github.com/amigoer/rocket-leaf#readme'
+const GITHUB_URL = 'https://github.com/zyg1923/rocket-leaf'
+const DOCS_URL = 'https://github.com/zyg1923/rocket-leaf/blob/main/打包与部署.md'
 
 type SampleKey = 'local' | 'docker' | 'paste'
 

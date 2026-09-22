@@ -68,7 +68,7 @@
 - 重构后的应用版本号从 0.1.0 重新开始。本次发布不是此前 1.x 系列的延续，也不提供
   从 1.x 的升级路径。
 
-[0.1.3]: https://github.com/amigoer/rocket-leaf/compare/v0.1.2...v0.1.3
-[0.1.2]: https://github.com/amigoer/rocket-leaf/compare/v0.1.1...v0.1.2
-[0.1.1]: https://github.com/amigoer/rocket-leaf/compare/v0.1.0...v0.1.1
-[0.1.0]: https://github.com/amigoer/rocket-leaf/releases/tag/v0.1.0
+[0.1.3]: https://github.com/zyg1923/rocket-leaf/compare/v0.1.2...v0.1.3
+[0.1.2]: https://github.com/zyg1923/rocket-leaf/compare/v0.1.1...v0.1.2
+[0.1.1]: https://github.com/zyg1923/rocket-leaf/compare/v0.1.0...v0.1.1
+[0.1.0]: https://github.com/zyg1923/rocket-leaf/releases/tag/v0.1.0

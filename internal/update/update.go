@@ -13,9 +13,9 @@ import (
 )
 
 // ReleasesURL is the human-facing downloads page.
-const ReleasesURL = "https://github.com/amigoer/rocket-leaf/releases/latest"
+const ReleasesURL = "https://github.com/zyg1923/rocket-leaf/releases/latest"
 
-const latestReleaseAPI = "https://api.github.com/repos/amigoer/rocket-leaf/releases/latest"
+const latestReleaseAPI = "https://api.github.com/repos/zyg1923/rocket-leaf/releases/latest"
 
 const requestTimeout = 10 * time.Second
 

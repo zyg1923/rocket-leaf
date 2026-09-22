@@ -10,8 +10,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/amigoer/rocket-leaf/releases/latest"><img src="https://img.shields.io/github/v/release/amigoer/rocket-leaf?style=flat-square&label=release" alt="Latest release"></a>
-  <a href="https://github.com/amigoer/rocket-leaf/releases"><img src="https://img.shields.io/github/downloads/amigoer/rocket-leaf/total?style=flat-square&label=downloads" alt="Downloads"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="Apache-2.0 license"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-39404A?style=flat-square" alt="Platforms">
   <img src="https://img.shields.io/badge/RocketMQ-4.x%20%7C%205.x-FF6A00?style=flat-square" alt="RocketMQ 4.x and 5.x">
@@ -19,7 +17,7 @@
 
 <p align="center">
   <a href="README.zh-CN.md">简体中文</a> ·
-  <a href="https://github.com/amigoer/rocket-leaf/releases">Download</a> ·
+  <a href="打包与部署.md">Package</a> ·
   <a href="docs/ARCHITECTURE.md">Documentation</a>
 </p>
 
@@ -80,18 +78,15 @@ Select any screenshot to open it at full resolution.
   </tr>
 </table>
 
-## Download
+## Repository
 
-Download the latest package from **[GitHub Releases](https://github.com/amigoer/rocket-leaf/releases)**:
+https://github.com/zyg1923/rocket-leaf
 
-Packages are named `rocket-leaf-<version>-<os>-<arch>.<ext>`, where `os` is
-`mac`, `windows` or `linux` and `arch` is `amd64` or `arm64`.
+```powershell
+git clone https://github.com/zyg1923/rocket-leaf.git
+```
 
-| Platform | Package |
-| --- | --- |
-| macOS Apple Silicon / Intel | `rocket-leaf-<version>-mac-arm64.dmg` / `-mac-amd64.dmg` |
-| Windows ARM64 / x64 | `rocket-leaf-<version>-windows-arm64.exe` / `-windows-amd64.exe` |
-| Linux ARM64 / x64 | `rocket-leaf-<version>-linux-arm64.AppImage` / `-linux-amd64.AppImage` |
+This repository contains source only. Installers are not committed. See [打包与部署.md](打包与部署.md) for how to build a Windows package and which files are missing after clone.
 
 ## Quick start
 
@@ -100,8 +95,6 @@ Packages are named `rocket-leaf-<version>-<os>-<arch>.<ext>`, where `os` is
 3. Save, connect, and choose a feature from the sidebar.
 
 Your profiles and settings stay in the local user configuration directory. Configuration exports contain plaintext credentials and should be stored securely.
-
-Dependencies, frontend build output, and installers are not committed. For the Windows package steps and the list of omitted files, see [打包与部署.md](打包与部署.md).
 
 ## Development
 
@@ -121,4 +114,4 @@ Use `make check` to run project checks, `make package` to build a distributable,
 
 ## License
 
-[Apache-2.0](LICENSE) © 2026 [amigoer](https://github.com/amigoer)
+[Apache-2.0](LICENSE)

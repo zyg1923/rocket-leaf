@@ -57,9 +57,9 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 
-const GITHUB_URL = 'https://github.com/amigoer/rocket-leaf'
-const GITHUB_ISSUES_URL = 'https://github.com/amigoer/rocket-leaf/issues'
-const GITHUB_RELEASES_URL = 'https://github.com/amigoer/rocket-leaf/releases/latest'
+const GITHUB_URL = 'https://github.com/zyg1923/rocket-leaf'
+const GITHUB_ISSUES_URL = 'https://github.com/zyg1923/rocket-leaf/issues'
+const GITHUB_RELEASES_URL = 'https://github.com/zyg1923/rocket-leaf/releases/latest'
 
 type SectionId = 'appearance' | 'general' | 'fonts' | 'message' | 'proxy' | 'data' | 'about'
 
