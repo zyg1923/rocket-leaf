@@ -29,3 +29,7 @@ build/ios/
 **/.DS_Store
 
 .claude/
+
+# 打包时生成或下载的安装器（wails3 / NSIS，可重新生成）
+build/windows/nsis/*.exe
+*.syso

@@ -101,6 +101,8 @@ Packages are named `rocket-leaf-<version>-<os>-<arch>.<ext>`, where `os` is
 
 Your profiles and settings stay in the local user configuration directory. Configuration exports contain plaintext credentials and should be stored securely.
 
+Dependencies, frontend build output, and installers are not committed. For the Windows package steps and the list of omitted files, see [打包与部署.md](打包与部署.md).
+
 ## Development
 
 Requires Go 1.25+, Node.js 20+, npm, and the [Wails 3 CLI](https://v3.wails.io).
